@@ -16,7 +16,7 @@ dockerops_kwargs = {
     "mount_tmp_dir": False,
     "mounts": [
         Mount(
-            source="<path_to_your_airflow-ml_repo>/data", # Change to your path
+            source="mlops_airflow/data", 
             target="/opt/airflow/data/",
             type="bind",
         )
