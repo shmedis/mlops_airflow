@@ -1,56 +1,78 @@
 import logging
+import os
+import warnings
+import json
 
 import click
 import pandas as pd
 from transformers import pipeline
+from sklearn.metrics import accuracy_score
 
 LABELS = [
-    "Crypto",
-    "SEC",
-    "Dividend",
-    "Economics",
-    "Oil or Gas",
-    "IPO",
-    "Politics",
-    "Buffet",
-    "Stock",
-    "Other",
+    "СВО",
+    "Экономика",
+    "Политика",
+    "Международные новости",
+    "Нефть и газ",
+    "Рынки и акции",
+    "Досуг",
+    "Регионы",
+    "Технологии",
+    "Другое",
 ]
 
 logging.basicConfig(level=logging.INFO)
-
+default_data_path = 'data.csv'
+default_pred_path = 'prediction.json'
 
 @click.command()
-@click.option("--data_path", help="Path to the input data CSV file")
-@click.option("--pred_path", help="Path to save the output JSON file")
-def model_predict(data_path: str, pred_path: str) -> None:
+@click.option("--data_path", default=default_data_path, help="Путь к файлу входных данных CSV")
+@click.option("--pred_path", default=default_pred_path, help="Путь для сохранения файла JSON с результатами")
+def model_predict(data_path, pred_path) -> None:
     """
-    Run the model prediction on the input data and save the results as a JSON file.
+    Запускает предсказание модели на входных данных и сохраняет результаты в виде файла JSON.
 
     Args:
-        data_path (str): Path to the input data CSV file.
-        pred_path (str): Path to save the output JSON file.
+        data_path (str): Путь к файлу входных данных CSV.
+        pred_path (str): Путь для сохранения файла JSON с результатами.
     """
-    logging.info("Loading the model...")
+    logging.info("Загрузка модели...")
     model_hf = pipeline(model="valhalla/distilbart-mnli-12-1", device=-1)
-    logging.info("Model loaded successfully.")
+    logging.info("Модель успешно загружена.")
 
-    logging.info(f"Reading data from '{data_path}'...")
+    logging.info(f"Чтение данных из '{data_path}'...")
     df = pd.read_csv(data_path, sep="\t")
-    logging.info("Data read successfully.")
+    logging.info("Данные успешно прочитаны.")
     
     texts_for_pred = (df.title + ". " + df.summary).tolist()
 
-    logging.info("Performing model prediction...")
-    pred = model_hf(texts_for_pred, LABELS, multi_label=False)
-    logging.info("Prediction completed successfully.")
+    logging.info("Выполнение предсказания модели...")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        pred = model_hf(texts_for_pred, LABELS, multi_label=False)
+    logging.info("Предсказание успешно выполнено.")
 
     df["label"] = [x["labels"][0] for x in pred]
 
-    logging.info(f"Saving the predictions to '{pred_path}'...")
-    df.T.to_json(pred_path)
-    logging.info("Predictions saved successfully.")
+    # Вычисление показателя точности
+    true_labels = df["label"]
+    predicted_labels = [LABELS[index] for index in true_labels]
+    accuracy = accuracy_score(true_labels, predicted_labels)
+    logging.info(f"Точность: {accuracy}")
 
+    logging.info(f"Сохранение предсказаний в '{pred_path}'...")
+    # Сохранение DataFrame в файл JSON с параметром ensure_ascii=False
+    df.to_json(pred_path, orient="records", force_ascii=False)
+    logging.info("Предсказания успешно сохранены.")
+    
+    # Декодирование JSON и вывод текста
+    with open(pred_path, 'r', encoding='utf-8') as f:
+        json_data = json.load(f)
+        for entry in json_data:
+            print("Title:", json_data[entry]["title"])
+            print("Summary:", json_data[entry]["summary"])
+            print("Label:", json_data[entry]["label"])
+            print("\n")
 
 if __name__ == "__main__":
     model_predict()
